@@ -2,22 +2,31 @@ import scrapy
 from pysondb import db
 import datetime
 
+
 db_zara_es = db.getDb("Zara-Es.json")
 
 class ZaraSpider(scrapy.Spider):
     name = "zaraspider"
     start_urls = [
-        'https://www.zara.com/es/es/mujer-prendas-exterior-l1184.html?v1=2290701&page=1',
-        'https://www.zara.com/es/es/mujer-prendas-exterior-l1184.html?v1=2290701&page=2',
-        'https://www.zara.com/es/es/mujer-prendas-exterior-l1184.html?v1=2290701&page=3',
-        'https://www.zara.com/es/es/mujer-prendas-exterior-l1184.html?v1=2290701&page=4',
-        'https://www.zara.com/es/es/mujer-prendas-exterior-l1184.html?v1=2290701&page=5',
+        'https://www.zara.com/es/',
+
 
     ]
 
-    def parse(self, response):
-        product_links = response.xpath('//div[@class="product-grid-product__figure"]/a/@href').getall()
 
+    def parse(self, response):
+        all_urls_mujer = response.xpath('//*[@id="theme-app"]/div/div/div[1]/div/div/div[2]/nav/div[1]/ul[1]/li/a/@href').getall()
+        print(all_urls_mujer)
+        # şimdilik yorum      all_urls_hombre = response.xpath('//ul[@class:"layout-categories-category__subcategory-main"/li[2]/@href').getall()
+        for urls_mujer in all_urls_mujer:
+            yield response.follow(urls_mujer, callback=self.parse_category)
+
+    def parse_category(self, response):
+        if 'mujer' in response.url:
+            self.gender = 'mujer'
+        elif 'hombre' in response.url:
+            self.gender = 'hombre'
+        product_links = response.xpath('//div[@class="product-grid-product__figure"]/a/@href').getall()
         for product_link in product_links:
             yield response.follow(product_link, callback=self.parse_product)
 
@@ -29,7 +38,7 @@ class ZaraSpider(scrapy.Spider):
         discount_percentage = response.xpath('//*[@id="main"]/article/div[2]/div[1]/div[2]/div/div[1]/div[2]/div/span/span[2]/span[1]/text()[2]').get()
         SKUS_on_stock = response.xpath('//li[@class="size-selector-list__item"]')
         SKUS_max = response.xpath('//ul[@role="listbox"]/li').getall()
-        product_id = response.xpath('/html/@id').get()
+        product_id = response.xpath('/html/@id').get().replace("product-", "")
         if len(SKUS_on_stock) > 0:
             currently_in_stock = "yes"
         else:
@@ -39,13 +48,13 @@ class ZaraSpider(scrapy.Spider):
         retailerid = response.xpath('//div[@class="product-detail-info__actions"]/p/text()').get()
         retailer = "Zara(Es)"
         brand = "Zara"
-        gender = response.xpath('/html/head/script[13]/text()').get()
-        print(response.body, "****************************************************************")
+        gender = response.meta.get('gender')
         images = response.xpath('//div[@class="product-detail-images__frame"]/ul/li/button/div/div/picture/img/@src').getall()
         date = datetime.datetime.now()
-        if db_zara_es.getByQuery({"Product Id": product_id}) is None:
+        existing = db_zara_es.getByQuery({"Product Id": product_id})
+        if len(existing) > 0:
             db_zara_es.add({
-                'Product Id': product_id.replace("product-", ""),
+                'Product Id': product_id,
                 'Original Full Price': original_full_price if original_full_price else before_sale_ofp,
                 'Current Price': current_price.strip() if current_price else None,
                 'Sale Price': sale_price.strip() if sale_price else None,
@@ -55,13 +64,14 @@ class ZaraSpider(scrapy.Spider):
                 'Date Last Seen': "{}{}{}{}{}".format(date.day, "-", date.month, "-", date.year),
                 'Currently in Stock': currently_in_stock,
                 'Title + Description': (title, description),
-                'Retailer Id': retailerid.split('|')[-1].strip(),
+                'Retailer Id': retailerid.split('|')[-1].strip() if retailerid else None,
                 'Retailer': retailer,
                 'Brand': brand,
                 'Gender': gender,
                 'İmages': images if images else None
             })
         else:
+            print(existing,"------------------------------------------------------------------------")
             db_zara_es.updateByQuery(db_dataset={"Product Id": product_id}, new_dataset={
                 'Original Full Price': original_full_price if original_full_price else before_sale_ofp,
                 'Current Price': current_price.strip() if current_price else None,
@@ -71,7 +81,7 @@ class ZaraSpider(scrapy.Spider):
                 'Date Last Seen': "{}{}{}{}{}".format(date.day, "-", date.month, "-", date.year),
                 'Currently in Stock': currently_in_stock,
                 'Title + Description': (title, description),
-                'Retailer Id': retailerid.split('|')[-1].strip(),
+                'Retailer Id': retailerid.split('|')[-1].strip() if retailerid else None,
                 'Retailer': retailer,
                 'Brand': brand,
                 'Gender': gender,
