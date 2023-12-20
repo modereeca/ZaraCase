@@ -11,13 +11,12 @@ class ZaraSpider(scrapy.Spider):
 
     def parse(self, response, **kwargs):
         mujer_urls = response.xpath('//*[@id="theme-app"]/div/div/div[1]/div/div/div[2]/nav/div[1]/ul[1]/li/a/@href').getall()
-        # hombre_urls = response.xpath('//ul[@class:"layout-categories-category__subcategory-main"/li[2]/@href').getall()
-        # şimdilik yorum      all_urls_hombre = response.xpath('//ul[@class:"layout-categories-category__subcategory-main"/li[2]/@href').getall()
+        hombre_urls = response.xpath('//*[@id="theme-app"]/div/div/div[1]/div/div/div[2]/nav/div[1]/ul[2]/li/a/@href').getall()
         for mujer_url in mujer_urls:
-            yield response.follow(mujer_url, callback=self.parse_category, cb_kwargs=dict(gender="woman"))
+            yield response.follow(mujer_url, callback=self.parse_category, cb_kwargs=dict(gender="Woman"))
 
-        # for hombre_url in hombre_urls:
-        #    yield response.follow(hombre_url, callback=self.parse_category, cb_kwargs=dict(gender="man"))
+        for hombre_url in hombre_urls:
+            yield response.follow(hombre_url, callback=self.parse_category, cb_kwargs=dict(gender="Man"))
 
     def parse_category(self, response, gender):
         product_links = response.xpath('//div[@class="product-grid-product__figure"]/a/@href').getall()
@@ -28,9 +27,8 @@ class ZaraSpider(scrapy.Spider):
         current_price = response.xpath('//div[@class="product-detail-info__price-amount price"]/span//span/span/div/span/text()').get()
         if current_price is None:
             current_price = response.xpath('//span[@class="price-old__amount price__amount price__amount-old"]/div/span/text()').get()
-
         sale_price = response.xpath('//span[@class="price-current__amount"]//text()').get()
-        discount_percentage = response.xpath('//*[@id="main"]/article/div[2]/div[1]/div[2]/div/div[1]/div[2]/div/span/span[2]/span[1]/text()[2]').get()
+        discount_percentage = response.xpath('//span[@class="price-current__discount-percentage"]/text()[2]').get()
         SKUS_on_stock = response.xpath('//li[@class="size-selector-list__item"]')
         SKUS_max = response.xpath('//ul[@role="listbox"]/li').getall()
         product_id = response.xpath('/html/@id').get().replace("product-", "")
@@ -43,9 +41,11 @@ class ZaraSpider(scrapy.Spider):
         retailerid = response.xpath('//div[@class="product-detail-info__actions"]/p/text()').get()
         retailer = "Zara(Es)"
         brand = "Zara"
-        images = response.xpath('//div[@class="product-detail-images__frame"]/ul/li/button/div/div/picture/img/@src').getall()
+        images = response.xpath('//li[@class="product-detail-images__image-wrapper"]/button/div/div/picture/img/@src').getall()
         date = datetime.datetime.now()
         existing = db_zara_es.getByQuery({"Product Id": product_id})
+        if discount_percentage is None:
+            sale_price = ""
 
         if len(existing) == 0:
             db_zara_es.add({
@@ -63,10 +63,9 @@ class ZaraSpider(scrapy.Spider):
                 'Retailer': retailer,
                 'Brand': brand,
                 'Gender': gender,
-                'Images': images,
+                'Images': images
             })
         else:
-            print("updating existing...")
             db_zara_es.updateByQuery(db_dataset={"Product Id": product_id}, new_dataset={
                 'Current Price': current_price,
                 'Sale Price': sale_price,
